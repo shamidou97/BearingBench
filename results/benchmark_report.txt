@@ -1,0 +1,11 @@
+============================================================
+BearingBench — Benchmark Report
+XJTU-SY Rolling Element Bearing Fault Detection
+4 Classes: Normal / Inner Race / Outer Race / Cage
+============================================================
+Model           Accuracy  MacroF1  CageRec  CageAUC    Params
+------------------------------------------------------------
+CNN                0.000    0.000    0.000    0.000         0
+LSTM               0.000    0.000    0.000    0.000         0
+BiLSTM             0.000    0.000    0.000    0.000         0
+Transformer        0.638    0.634    0.918    0.986   118,212

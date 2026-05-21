@@ -1,0 +1,10 @@
+data/WC1/
+data/WC2/
+data/WC3/
+data/cache/
+models/*.h5
+models/*.keras
+src/__pycache__/
+__pycache__/
+*.pyc
+*.pkl
