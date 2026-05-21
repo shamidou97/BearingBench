@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BearingBench — Bearing Fault Detection</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500&display=swap');
+  :root {
+    --bg:#060809; --bg2:#0e1117; --bg3:#151a22; --border:#253040;
+    --accent:#00e5ff; --warn:#ffb300; --danger:#ff3d57; --ok:#00e676;
+    --purple:#b07fff; --text:#e8edf2; --muted:#6b7f96;
+    --mono:'IBM Plex Mono',monospace; --sans:'IBM Plex Sans',sans-serif;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:16px;padding:24px;}
+
+  .header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;padding-bottom:16px;border-bottom:1px solid var(--border);}
+  .logo{width:36px;height:36px;background:var(--accent);border-radius:8px;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-weight:600;font-size:14px;color:#000;margin-right:12px;}
+  .title{font-family:var(--mono);font-size:22px;font-weight:700;}
+  .subtitle{font-size:13px;color:var(--muted);margin-top:2px;letter-spacing:.5px;text-transform:uppercase;}
+  .live{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;color:var(--ok);}
+  .dot{width:7px;height:7px;background:var(--ok);border-radius:50%;animation:pulse 2s infinite;}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+  .tabs{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;}
+  .tab{padding:8px 20px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;font-family:var(--mono);font-size:14px;color:var(--muted);cursor:pointer;transition:all .2s;}
+  .tab:hover{border-color:var(--accent);color:var(--text);}
+  .tab.active{background:var(--accent);color:#000;border-color:var(--accent);font-weight:600;}
+
+  .metrics{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px;}
+  .metric{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px 16px;position:relative;overflow:hidden;}
+  .metric::before{content:'';position:absolute;top:0;left:0;width:3px;height:100%;background:var(--accent);}
+  .metric.warn::before{background:var(--warn);}
+  .metric.danger::before{background:var(--danger);}
+  .metric.ok::before{background:var(--ok);}
+  .metric.purple::before{background:var(--purple);}
+  .metric-label{font-size:13px;color:#8ba8c0;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;font-weight:500;}
+  .metric-value{font-family:var(--mono);font-size:32px;font-weight:700;letter-spacing:-0.5px;}
+  .metric-sub{font-size:13px;color:#8ba8c0;margin-top:6px;}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px;}
+  .full{margin-bottom:16px;}
+  .card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:16px 20px;}
+  .card-title{font-family:var(--mono);font-size:14px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;}
+  .card-sub{font-size:14px;color:#a0b4c8;margin-bottom:14px;font-weight:400;}
+  .chart-wrap{position:relative;width:100%;}
+
+  /* Bearing timeline */
+  .timeline{display:flex;gap:1px;flex-wrap:wrap;margin-top:8px;}
+  .tcell{width:8px;height:18px;border-radius:1px;cursor:pointer;transition:transform .1s;}
+  .tcell:hover{transform:scaleY(1.4);}
+  .tcell.s0{background:#00e676;opacity:.7;}
+  .tcell.s1{background:#ffb300;opacity:.9;}
+  .tcell.s2{background:#ff3d57;}
+  .tcell.s3{background:#9b59b6;}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px;}
+  .leg{display:flex;align-items:center;gap:8px;font-size:15px;color:var(--text);font-weight:500;}
+  .leg-dot{width:10px;height:10px;border-radius:2px;}
+
+  /* Bearing selector */
+  .bearing-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:12px;}
+  .b-btn{padding:12px 8px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;font-family:var(--mono);font-size:14px;color:#8ba8c0;cursor:pointer;text-align:center;transition:all .2s;font-weight:500;}
+  .b-btn:hover{border-color:var(--accent);color:var(--text);}
+  .b-btn.active{background:var(--accent);color:#000;border-color:var(--accent);font-weight:600;}
+  .b-btn.skipped{opacity:.4;cursor:not-allowed;text-decoration:line-through;}
+
+  /* Model comparison table */
+  .model-table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:15px;}
+  .model-table th{background:var(--bg3);color:var(--accent);padding:12px 16px;text-align:left;font-size:13px;text-transform:uppercase;letter-spacing:.5px;border-bottom:2px solid var(--border);}
+  .model-table td{padding:12px 16px;border-bottom:1px solid var(--border);color:var(--text);font-size:15px;}
+  .model-table tr:hover td{background:var(--bg3);}
+  .badge{padding:5px 12px;border-radius:4px;font-size:13px;font-weight:700;}
+  .badge.best{background:#00e67620;color:#00e676;border:1px solid #00e676;}
+  .badge.good{background:#ffb30020;color:#ffb300;border:1px solid #ffb300;}
+  .badge.low{background:#ff3d5720;color:#ff3d57;border:1px solid #ff3d57;}
+
+  /* Inference panel */
+  .infer-panel{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px;}
+  .infer-title{font-family:var(--mono);font-size:16px;color:var(--accent);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:20px;font-weight:700;}
+  .infer-body{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  .upload-zone{border:2px dashed var(--border);border-radius:8px;padding:24px 20px;text-align:center;cursor:pointer;transition:border-color .2s;}
+  .upload-zone:hover{border-color:var(--accent);}
+  .upload-zone input{display:none;}
+  .upload-icon{font-size:28px;margin-bottom:8px;}
+  .upload-text{font-size:14px;color:#a0b4c8;}
+  .upload-text span{color:var(--accent);}
+  .controls{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px;}
+  .ctrl-label{font-size:13px;color:#8ba8c0;margin-bottom:6px;text-transform:uppercase;font-weight:500;letter-spacing:.5px;}
+  select,input[type=number]{width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:6px;font-family:var(--mono);font-size:14px;}
+  .btn{padding:10px 20px;background:var(--accent);color:#000;border:none;border-radius:6px;font-family:var(--mono);font-size:12px;font-weight:600;cursor:pointer;margin-top:12px;width:100%;}
+  .btn:hover{opacity:.85;}
+  .btn:disabled{opacity:.4;cursor:not-allowed;}
+  .spinner{display:none;width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;margin:8px auto 0;}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  .pred-result{display:flex;flex-direction:column;gap:12px;}
+  .pred-state{font-family:var(--mono);font-size:32px;font-weight:700;text-align:center;padding:20px;border-radius:8px;}
+  .pred-state.s0{background:#00e67615;color:#00e676;border:1px solid #00e676;}
+  .pred-state.s1{background:#ffb30015;color:#ffb300;border:1px solid #ffb300;}
+  .pred-state.s2{background:#ff3d5715;color:#ff3d57;border:1px solid #ff3d57;}
+  .pred-state.s3{background:#9b59b615;color:#9b59b6;border:1px solid #9b59b6;}
+  .pred-state.empty{background:var(--bg3);color:#a0b4c8;border:1px solid var(--border);font-size:16px;}
+  .conf-bars{display:flex;flex-direction:column;gap:8px;}
+  .conf-row{display:flex;align-items:center;gap:10px;}
+  .conf-label{font-family:var(--mono);font-size:14px;width:110px;color:#a0b4c8;font-weight:500;}
+  .conf-bar-wrap{flex:1;background:var(--bg3);border-radius:4px;height:14px;overflow:hidden;}
+  .conf-bar{height:100%;border-radius:4px;transition:width .8s ease;}
+  .conf-val{font-family:var(--mono);font-size:13px;width:50px;text-align:right;}
+  .pred-meta{font-size:14px;color:#8ba8c0;text-align:center;margin-top:4px;}
+
+  .footer{margin-top:24px;padding-top:14px;border-top:1px solid var(--border);display:flex;justify-content:space-between;font-size:13px;color:#6b7f96;font-family:var(--mono);}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div style="display:flex;align-items:center">
+    <div class="logo">BB</div>
+    <div>
+      <div class="title">BearingBench</div>
+      <div class="subtitle">Rolling Element Bearing Fault Detection · XJTU-SY Dataset</div>
+    </div>
+  </div>
+  <div class="live"><div class="dot"></div>MONITORING ACTIVE</div>
+</div>
+
+<!-- Metrics -->
+<div class="metrics">
+  <div class="metric ok">
+    <div class="metric-label">Best Accuracy</div>
+    <div class="metric-value" id="m-acc">—</div>
+    <div class="metric-sub" id="m-acc-sub">Loading...</div>
+  </div>
+  <div class="metric">
+    <div class="metric-label">Total Bearings</div>
+    <div class="metric-value">14</div>
+    <div class="metric-sub">1 skipped (combined fault)</div>
+  </div>
+  <div class="metric warn">
+    <div class="metric-label">CSV Files</div>
+    <div class="metric-value">9,164</div>
+    <div class="metric-sub">~577K windows @ 1024pts</div>
+  </div>
+  <div class="metric purple">
+    <div class="metric-label">Cage Recall</div>
+    <div class="metric-value" id="m-cage">—</div>
+    <div class="metric-sub">Rarest class (1.4%)</div>
+  </div>
+  <div class="metric danger">
+    <div class="metric-label">Fault Classes</div>
+    <div class="metric-value">4</div>
+    <div class="metric-sub">Normal/Inner/Outer/Cage</div>
+  </div>
+</div>
+
+<!-- Live Inference Panel -->
+<div class="infer-panel">
+  <div class="infer-title">⚡ Live Fault Prediction — Upload Bearing CSV</div>
+  <div class="infer-body">
+    <div>
+      <div class="upload-zone" id="dropZone"
+           onclick="document.getElementById('csvFile').click()"
+           ondragover="event.preventDefault();this.style.borderColor='var(--accent)'"
+           ondragleave="this.style.borderColor='var(--border)'"
+           ondrop="handleDrop(event)">
+        <input type="file" id="csvFile" accept=".csv" onchange="handleFile(this.files[0])">
+        <div class="upload-icon">🔩</div>
+        <div class="upload-text">Drop a bearing <span>.csv file</span> here</div>
+        <div class="upload-text" style="margin-top:4px" id="fileName">No file selected</div>
+      </div>
+      <div class="controls">
+        <div>
+          <div class="ctrl-label">Model</div>
+          <select id="modelSelect">
+            <option value="CNN">CNN</option>
+            <option value="LSTM" selected>LSTM</option>
+            <option value="BiLSTM">BiLSTM</option>
+            <option value="Transformer">Transformer</option>
+          </select>
+        </div>
+        <div>
+          <div class="ctrl-label">Window Index</div>
+          <input type="number" id="windowIdx" value="0" min="0">
+        </div>
+      </div>
+      <button class="btn" id="predictBtn" onclick="predict()" disabled>
+        Run Fault Prediction
+      </button>
+      <div class="spinner" id="spinner"></div>
+    </div>
+    <div class="pred-result">
+      <div class="pred-state empty" id="predState">
+        Upload a .csv file and click<br>Run Fault Prediction
+      </div>
+      <div class="conf-bars" id="confBars" style="display:none">
+        <div class="conf-row">
+          <div class="conf-label">Normal</div>
+          <div class="conf-bar-wrap"><div class="conf-bar" id="bar0" style="width:0%;background:#00e676"></div></div>
+          <div class="conf-val" id="val0">0%</div>
+        </div>
+        <div class="conf-row">
+          <div class="conf-label">Inner Race</div>
+          <div class="conf-bar-wrap"><div class="conf-bar" id="bar1" style="width:0%;background:#ffb300"></div></div>
+          <div class="conf-val" id="val1">0%</div>
+        </div>
+        <div class="conf-row">
+          <div class="conf-label">Outer Race</div>
+          <div class="conf-bar-wrap"><div class="conf-bar" id="bar2" style="width:0%;background:#ff3d57"></div></div>
+          <div class="conf-val" id="val2">0%</div>
+        </div>
+        <div class="conf-row">
+          <div class="conf-label">Cage</div>
+          <div class="conf-bar-wrap"><div class="conf-bar" id="bar3" style="width:0%;background:#9b59b6"></div></div>
+          <div class="conf-val" id="val3">0%</div>
+        </div>
+      </div>
+      <div class="pred-meta" id="predMeta"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Model comparison + distribution -->
+<div class="grid2">
+  <div class="card">
+    <div class="card-title">Model Benchmark Results</div>
+    <div class="card-sub">CNN · LSTM · BiLSTM · Transformer on XJTU-SY</div>
+    <table class="model-table" id="modelTable">
+      <thead><tr>
+        <th>Model</th><th>Accuracy</th><th>Macro F1</th>
+        <th>Cage Rec</th><th>Time (hrs)</th>
+      </tr></thead>
+      <tbody id="modelBody"></tbody>
+    </table>
+  </div>
+  <div class="card">
+    <div class="card-title">Fault Class Distribution</div>
+    <div class="card-sub">File counts across all 14 active bearings</div>
+    <div class="chart-wrap" style="height:220px"><canvas id="distChart"></canvas></div>
+  </div>
+</div>
+
+<!-- Bearing selector + timeline -->
+<div class="full card">
+  <div class="card-title">Bearing Lifetime Timeline</div>
+  <div class="card-sub">Click a bearing to see its run-to-failure fault progression</div>
+  <div class="bearing-grid" id="bearingGrid"></div>
+  <div class="legend">
+    <div class="leg"><div class="leg-dot" style="background:#00e676"></div>Normal</div>
+    <div class="leg"><div class="leg-dot" style="background:#ffb300"></div>Inner Race</div>
+    <div class="leg"><div class="leg-dot" style="background:#ff3d57"></div>Outer Race</div>
+    <div class="leg"><div class="leg-dot" style="background:#9b59b6"></div>Cage</div>
+  </div>
+  <div class="timeline" id="timeline"></div>
+</div>
+
+<!-- Charts row -->
+<div class="grid3">
+  <div class="card">
+    <div class="card-title">Files Per Bearing</div>
+    <div class="card-sub">Lifetime in minutes (1 file = 1 min)</div>
+    <div class="chart-wrap" style="height:200px"><canvas id="filesChart"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Severity Index by Condition</div>
+    <div class="card-sub">SI = Force × RPM² — WC3 highest</div>
+    <div class="chart-wrap" style="height:200px"><canvas id="siChart"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Per-Class Recall — All Models</div>
+    <div class="card-sub">How well each model detects each fault</div>
+    <div class="chart-wrap" style="height:200px"><canvas id="recallChart"></canvas></div>
+  </div>
+</div>
+
+<div class="footer">
+  <span>BearingBench · XJTU-SY Dataset · CNN vs LSTM vs BiLSTM vs Transformer · RTX 4060</span>
+  <span id="ts"></span>
+</div>
+
+<script>
+document.getElementById('ts').textContent = new Date().toLocaleString();
+
+const COLORS = {
+  'Bearing1_1':'#00e5ff','Bearing1_2':'#00b8d9','Bearing1_3':'#0090b3',
+  'Bearing1_4':'#006b8a','Bearing2_1':'#ff3d57','Bearing2_2':'#ff6b35',
+  'Bearing2_3':'#ffb300','Bearing2_4':'#e6ac00','Bearing2_5':'#cc9900',
+  'Bearing3_1':'#00e676','Bearing3_2':'#00c060','Bearing3_3':'#00a050',
+  'Bearing3_4':'#008040','Bearing3_5':'#006030',
+};
+const WC_COLORS = {'WC1':'#00e5ff','WC2':'#ff3d57','WC3':'#00e676'};
+let charts = {};
+let selectedFile = null;
+let allBearings  = [];
+let modelData    = [];
+
+function labelClass(lbl) {
+  return ['s0','s1','s2','s3'][lbl] || 's0';
+}
+
+// ── Load models results ───────────────────────────────────────
+async function loadModels() {
+  const data = await fetch('/api/models').then(r=>r.json()).catch(()=>[]);
+  modelData  = data;
+
+  // Update metrics
+  if (data.length > 0) {
+    const best = data[0];
+    document.getElementById('m-acc').textContent     = best.accuracy + '%';
+    document.getElementById('m-acc-sub').textContent = best.model_name;
+    document.getElementById('m-cage').textContent    =
+      (best.recall_cage * 100).toFixed(1) + '%';
+  }
+
+  // Populate table
+  const tbody = document.getElementById('modelBody');
+  tbody.innerHTML = '';
+  data.forEach((m, i) => {
+    const acc  = parseFloat(m.accuracy);
+    const badge = i===0 ? 'best' : acc >= 90 ? 'good' : 'low';
+    tbody.innerHTML += `<tr>
+      <td><span class="badge ${badge}">${m.model_name}</span></td>
+      <td>${m.accuracy}%</td>
+      <td>${m.macro_f1}</td>
+      <td>${(m.recall_cage*100).toFixed(1)}%</td>
+      <td>${m.training_hrs}h</td>
+    </tr>`;
+  });
+
+  buildRecallChart(data);
+}
+
+// ── Load distribution ─────────────────────────────────────────
+async function loadDistribution() {
+  const data = await fetch('/api/distribution').then(r=>r.json()).catch(()=>[]);
+  const colors = {'Normal':'#00e676','Inner Race':'#ffb300',
+                  'Outer Race':'#ff3d57','Cage':'#9b59b6'};
+  const ctx = document.getElementById('distChart').getContext('2d');
+  if (charts.dist) charts.dist.destroy();
+  charts.dist = new Chart(ctx, {
+    type:'doughnut',
+    data:{
+      labels: data.map(d=>d.fault_state),
+      datasets:[{
+        data: data.map(d=>d.count),
+        backgroundColor: data.map(d=>(colors[d.fault_state]||'#888')+'40'),
+        borderColor:     data.map(d=> colors[d.fault_state]||'#888'),
+        borderWidth:1.5
+      }]
+    },
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:true,position:'bottom',
+        labels:{color:'#cdd6e0',font:{size:10},boxWidth:8,padding:8}}}}
+  });
+}
+
+// ── Load bearings ─────────────────────────────────────────────
+async function loadBearings() {
+  allBearings = await fetch('/api/bearings').then(r=>r.json()).catch(()=>[]);
+
+  // Build bearing grid
+  const grid = document.getElementById('bearingGrid');
+  grid.innerHTML = '';
+  allBearings.forEach(b => {
+    const btn = document.createElement('div');
+    btn.className = 'b-btn' + (b.is_skipped ? ' skipped' : '');
+    btn.textContent = b.name.replace('Bearing','B');
+    btn.title = `${b.name} · ${b.fault_type} · ${b.total_files} files`;
+    if (!b.is_skipped) {
+      btn.onclick = () => loadTimeline(b.name, btn);
+    }
+    grid.appendChild(btn);
+  });
+
+  buildFilesChart();
+  loadTimeline(allBearings.find(b=>!b.is_skipped)?.name,
+               grid.firstChild);
+}
+
+// ── Bearing timeline ──────────────────────────────────────────
+async function loadTimeline(name, btn) {
+  if (!name) return;
+  document.querySelectorAll('.b-btn').forEach(b=>b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+
+  const data = await fetch(`/api/bearing/${name}`)
+    .then(r=>r.json()).catch(()=>[]);
+  const tl = document.getElementById('timeline');
+  tl.innerHTML = '';
+  data.forEach(f => {
+    const el = document.createElement('div');
+    el.className = 'tcell ' + labelClass(f.fault_label);
+    el.title = `File ${f.file_number} · ${f.lifetime_pct.toFixed(1)}% lifetime · ${f.fault_state}`;
+    tl.appendChild(el);
+  });
+}
+
+// ── Files per bearing chart ───────────────────────────────────
+function buildFilesChart() {
+  const ctx = document.getElementById('filesChart').getContext('2d');
+  if (charts.files) charts.files.destroy();
+  const active = allBearings.filter(b=>!b.is_skipped);
+  charts.files = new Chart(ctx, {
+    type:'bar',
+    data:{
+      labels: active.map(b=>b.name.replace('Bearing','')),
+      datasets:[{
+        data:  active.map(b=>b.total_files),
+        backgroundColor: active.map(b=>COLORS[b.name]+'60'||'#ffffff30'),
+        borderColor:     active.map(b=>COLORS[b.name]||'#ffffff'),
+        borderWidth:1.5
+      }]
+    },
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{grid:{color:'#1e2530'},ticks:{color:'#4a5568',font:{size:9}}},
+        y:{grid:{color:'#1e2530'},ticks:{color:'#4a5568'},
+           title:{display:true,text:'Files',color:'#4a5568',font:{size:10}}}
+      }}
+  });
+}
+
+// ── Severity index chart ──────────────────────────────────────
+async function loadSI() {
+  const data = await fetch('/api/summary').then(r=>r.json()).catch(()=>[]);
+  const ctx  = document.getElementById('siChart').getContext('2d');
+  if (charts.si) charts.si.destroy();
+  charts.si = new Chart(ctx, {
+    type:'bar',
+    data:{
+      labels: data.map(d=>d.wc),
+      datasets:[{
+        label:'Severity Index',
+        data:  data.map(d=>d.si),
+        backgroundColor: data.map(d=>WC_COLORS[d.wc]+'50'),
+        borderColor:     data.map(d=>WC_COLORS[d.wc]),
+        borderWidth:2
+      }]
+    },
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{grid:{color:'#1e2530'},ticks:{color:'#4a5568'}},
+        y:{grid:{color:'#1e2530'},ticks:{color:'#4a5568',
+           callback:v=>(v/1e6).toFixed(1)+'M'},
+           title:{display:true,text:'F × RPM²',color:'#4a5568',font:{size:10}}}
+      }}
+  });
+}
+
+// ── Per-class recall chart ────────────────────────────────────
+function buildRecallChart(data) {
+  const ctx = document.getElementById('recallChart').getContext('2d');
+  if (charts.recall) charts.recall.destroy();
+  const mColors = {'CNN':'#00e5ff','LSTM':'#00e676',
+                   'BiLSTM':'#ffb300','Transformer':'#ff3d57'};
+  charts.recall = new Chart(ctx, {
+    type:'bar',
+    data:{
+      labels:['Normal','Inner','Outer','Cage'],
+      datasets: data.map(m=>({
+        label: m.model_name,
+        data: [m.recall_normal, m.recall_inner,
+               m.recall_outer,  m.recall_cage],
+        backgroundColor: (mColors[m.model_name]||'#888')+'40',
+        borderColor:      mColors[m.model_name]||'#888',
+        borderWidth:1.5
+      }))
+    },
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:true,labels:{color:'#cdd6e0',
+               font:{size:9},boxWidth:8,padding:6}}},
+      scales:{
+        x:{grid:{color:'#1e2530'},ticks:{color:'#4a5568'}},
+        y:{grid:{color:'#1e2530'},ticks:{color:'#4a5568',
+           callback:v=>v.toFixed(2)},min:0,max:1.05}
+      }}
+  });
+}
+
+// ── File upload ───────────────────────────────────────────────
+function handleFile(file) {
+  if (!file) return;
+  selectedFile = file;
+  document.getElementById('fileName').textContent = file.name;
+  document.getElementById('predictBtn').disabled = false;
+  document.getElementById('dropZone').style.borderColor = 'var(--accent)';
+}
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('dropZone').style.borderColor = 'var(--border)';
+  const f = e.dataTransfer.files[0];
+  if (f && f.name.endsWith('.csv')) handleFile(f);
+}
+
+// ── Predict ───────────────────────────────────────────────────
+async function predict() {
+  if (!selectedFile) return;
+  const btn     = document.getElementById('predictBtn');
+  const spinner = document.getElementById('spinner');
+  btn.disabled  = true;
+  spinner.style.display = 'block';
+
+  const fd = new FormData();
+  fd.append('file',   selectedFile);
+  fd.append('model',  document.getElementById('modelSelect').value);
+  fd.append('window', document.getElementById('windowIdx').value);
+
+  try {
+    const res  = await fetch('/api/predict', {method:'POST', body:fd});
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    const labels  = ['Normal','Inner Race','Outer Race','Cage'];
+    const classes = ['s0','s1','s2','s3'];
+    const ps = document.getElementById('predState');
+    ps.textContent = labels[data.prediction];
+    ps.className   = 'pred-state ' + classes[data.prediction];
+
+    document.getElementById('confBars').style.display = 'flex';
+    const colors = ['#00e676','#ffb300','#ff3d57','#9b59b6'];
+    data.confidence.forEach((c,i) => {
+      const pct = (c*100).toFixed(1);
+      document.getElementById(`bar${i}`).style.width       = pct+'%';
+      document.getElementById(`bar${i}`).style.background  = colors[i];
+      document.getElementById(`val${i}`).textContent       = pct+'%';
+    });
+
+    document.getElementById('predMeta').textContent =
+      `Model: ${data.model} · Window: ${data.window_index+1}/${data.total_windows}`;
+  } catch(e) {
+    document.getElementById('predState').textContent = 'Error: ' + e.message;
+    document.getElementById('predState').className   = 'pred-state empty';
+  }
+  btn.disabled = false;
+  spinner.style.display = 'none';
+}
+
+// ── Init ──────────────────────────────────────────────────────
+async function init() {
+  await Promise.all([
+    loadModels(),
+    loadDistribution(),
+    loadBearings(),
+    loadSI(),
+  ]);
+}
+init();
+</script>
+</body>
+</html>
